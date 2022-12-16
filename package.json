@@ -1,0 +1,23 @@
+{
+  "name": "socketter",
+  "version": "1.0.0",
+  "description": "Custom Web Socket protocol implementation (RFC 6455)",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ManukMelkonyan/socketter.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ManukMelkonyan/socketter/issues"
+  },
+  "homepage": "https://github.com/ManukMelkonyan/socketter#readme",
+  "devDependencies": {
+    "nodemon": "^2.0.20"
+  }
+}

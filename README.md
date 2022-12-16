@@ -1,2 +1,2 @@
 # socketter
-Custom Web Socket protocol implementation (RFC 6455)
+Custom implementation of the Web Socket protocol (RFC 6455)
