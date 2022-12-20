@@ -9,8 +9,6 @@ const connectButton = document.getElementById('connect-btn');
 ws.onmessage = (event) => {
   console.log(event);
 }
-
-
 sendTextButton.addEventListener('click', (e) => {
   const data = messageInput.value;
   ws.send(data);

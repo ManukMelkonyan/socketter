@@ -2,9 +2,13 @@
   "name": "socketter",
   "version": "1.0.0",
   "description": "Custom Web Socket protocol implementation (RFC 6455)",
-  "main": "index.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "/dist"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "nodemon test.js"
   },
   "repository": {
     "type": "git",
@@ -18,6 +22,10 @@
   },
   "homepage": "https://github.com/ManukMelkonyan/socketter#readme",
   "devDependencies": {
+    "@types/node": "^18.11.17",
     "nodemon": "^2.0.20"
+  },
+  "dependencies": {
+    "typescript": "^4.9.4"
   }
 }
