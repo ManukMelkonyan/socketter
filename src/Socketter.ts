@@ -4,15 +4,6 @@ import { Duplex } from 'stream';
 import { Opcode } from './constants';
 import { unmask, generateMaskKey, getWebSocketAccept, decodePayload } from './helpers';
 
-
-type DataHandler = {
-  (data: Buffer | string): any;
-}
-
-type ErrorHandler = {
-  (data: Error | string): any;
-}
-
 type DataOptions = {
   FIN?: number;
   RSV1?: number;
@@ -37,16 +28,25 @@ type FrameData = {
 type AccumulatedData = {
   payload?: Buffer;
   type?: Opcode;
-}
+};
   
 export class Socketter {
   _server: Server;
-  handleData: DataHandler;
-  handleClose: DataHandler;
-  handleError: ErrorHandler;
+  
+  // mapping event listneres to their corresponding events: 'event': callback
+  eventListeners: Record<
+    'open' | 'close' | 'data' | 'ping',
+    ((socket: Duplex, data?: Buffer | string) => any)[]
+  >;
 
   constructor (server: Server) {
     this._server = server;
+    this.eventListeners = { 
+      'open': [],
+      'close': [],
+      'data': [],
+      'ping': [],
+    };
     server.on('upgrade', (req: IncomingMessage, socket: Duplex) => {
       console.log(req.headers);
       const webSocketKey = req.headers['sec-websocket-key'];
@@ -79,13 +79,37 @@ export class Socketter {
     });
   }
 
-  addEventListener = (event: string, listener: Function) => {
-    // listener()
+
+  addEventListener = (
+    event: 'open' | 'close' | 'data' | 'ping' ,
+    listener: (socket: Duplex, data?: Buffer | string) => any
+  ): void => {
+    this.eventListeners[event].push(listener); 
   }
 
-  // sendEvent = (data: Buffer | string | number | Object) => {
-    
-  // };
+  removeEventListener = (
+    event: 'open' | 'close' | 'data' | 'ping' ,
+    listener: (socket: Duplex, data?: Buffer | string) => any
+  ): boolean => {
+    const listenerIndex = this.eventListeners[event].findIndex((cb) => cb === listener);
+    if (listenerIndex === -1) return false;
+    this.eventListeners[event].splice(listenerIndex, 1);
+    return true;
+  }
+
+  _handleData = (socket: Duplex, data?: Buffer | string) => {
+    this.eventListeners.data.forEach(cb => {
+      cb(socket, data);
+    });
+  };
+  _handleClose = (socket: Duplex, data?: Buffer | string) => {
+    this.eventListeners.close.forEach(cb => {
+      cb(socket, data);
+    })
+  };
+  _handleError = (socket: Duplex, error: Error | string) => {
+
+  };
 
   _handlePong = () => {
 
@@ -111,7 +135,7 @@ export class Socketter {
   };
 
 
-  sendPong = (socket: Duplex, frameData: FrameData) => {
+  _sendPong = (socket: Duplex, frameData: FrameData) => {
     this._sendData(socket, {
       payload: frameData.payload,
       OPCODE: Opcode.PONG,
@@ -121,15 +145,15 @@ export class Socketter {
 
   _handleControlFrame = (socket: Duplex, frameData: FrameData) => {
     if (frameData.payloadLength >= 126) {
-      this.handleError(`Invalid control frame: payload length must be less than 126, but was ${frameData.payloadLength}`);
+      this._handleError(socket, `Invalid control frame: payload length must be less than 126, but was ${frameData.payloadLength}`);
     }
     if (frameData.FIN === 0) {
-      this.handleError(`Invalid control frame: control frames must not be fragmented`);
+      this._handleError(socket, `Invalid control frame: control frames must not be fragmented`);
     }
     if (frameData.OPCODE === Opcode.CLOSE) {
-      this.handleClose(frameData.payload);
+      this._handleClose(socket, frameData.payload);
     } else if (frameData.OPCODE === Opcode.PING) {
-      this.sendPong(socket, frameData);
+      this._sendPong(socket, frameData);
     } else if (frameData.OPCODE === Opcode.PONG) {
       this._handlePong();
     }
@@ -145,13 +169,13 @@ export class Socketter {
     //           OPCODE != 0     OPCODE = 0       OPCODE = 0           //
     /////////////////////////////////////////////////////////////////////
     if (this._isReservedOpcode(frameData.OPCODE)) {
-      this.handleError('A reserved OPCODE was used. Dropping the connection');
+      this._handleError(socket, 'A reserved OPCODE was used. Dropping the connection');
     }
     if (this._isControlFrame(frameData)) {
       this._handleControlFrame(socket, frameData);
     } else if (frameData.FIN === 1) {
       if (frameData.OPCODE === Opcode.CONTINUATION && !accumulatedData.type) {
-        return this.handleError('Invalid fragmentation termination attempt: there is no pending fragmantation')
+        return this._handleError(socket, 'Invalid fragmentation termination attempt: there is no pending fragmantation')
       }
       if (frameData.OPCODE === Opcode.CONTINUATION) {
         const { type, payload } = accumulatedData;
@@ -162,21 +186,21 @@ export class Socketter {
         
         delete accumulatedData.type;
         delete accumulatedData.payload;
-        return this.handleData(finalPayload);
+        return this._handleData(socket, finalPayload);
       }  else {
         const decodedPayload = decodePayload(frameData.payload, frameData.OPCODE);
-        return this.handleData(decodedPayload);
+        return this._handleData(socket, decodedPayload);
       }
     } else if (frameData.FIN === 0) {
       if (frameData.OPCODE === Opcode.CONTINUATION) {
         if (![Opcode.TEXT, Opcode.BINARY].includes(accumulatedData.type)) {
-          this.handleError('Invalid flagmentation continuation attempt, there is no pending fragmantation');
+          this._handleError(socket, 'Invalid flagmentation continuation attempt, there is no pending fragmantation');
         } else {
           accumulatedData.payload = Buffer.concat([accumulatedData.payload, frameData.payload]);
         }
       } else {
         const decodedPayload = decodePayload(frameData.payload, frameData.OPCODE);
-        return this.handleData(decodedPayload);
+        return this._handleData(socket, decodedPayload);
       }
     }  
   };

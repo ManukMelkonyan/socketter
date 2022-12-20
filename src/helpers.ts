@@ -15,6 +15,7 @@ export const mask = (payload: Buffer, maskKey: Buffer) => unmask(payload, maskKe
 
 export const decodePayload = (payload: Buffer, type = Opcode.TEXT) => {
   if (type === Opcode.TEXT) {
+    if (!isValidUTF8(payload)) throw new Error('Invalid UTF-8 payoad was provided');
     return payload.toString('utf-8');
   };
   return payload;

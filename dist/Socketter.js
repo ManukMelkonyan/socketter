@@ -5,6 +5,28 @@ const constants_1 = require("./constants");
 const helpers_1 = require("./helpers");
 class Socketter {
     constructor(server) {
+        this.addEventListener = (event, listener) => {
+            this.eventListeners[event].push(listener);
+        };
+        this.removeEventListener = (event, listener) => {
+            const listenerIndex = this.eventListeners[event].findIndex((cb) => cb === listener);
+            if (listenerIndex === -1)
+                return false;
+            this.eventListeners[event].splice(listenerIndex, 1);
+            return true;
+        };
+        this._handleData = (socket, data) => {
+            this.eventListeners.data.forEach(cb => {
+                cb(socket, data);
+            });
+        };
+        this._handleClose = (socket, data) => {
+            this.eventListeners.close.forEach(cb => {
+                cb(socket, data);
+            });
+        };
+        this._handleError = (socket, error) => {
+        };
         this._handlePong = () => {
         };
         this._isReservedOpcode = (OPCODE) => {
@@ -23,7 +45,7 @@ class Socketter {
                 OPCODE: constants_1.Opcode.PING,
             });
         };
-        this.sendPong = (socket, frameData) => {
+        this._sendPong = (socket, frameData) => {
             this._sendData(socket, {
                 payload: frameData.payload,
                 OPCODE: constants_1.Opcode.PONG,
@@ -31,16 +53,16 @@ class Socketter {
         };
         this._handleControlFrame = (socket, frameData) => {
             if (frameData.payloadLength >= 126) {
-                this.handleError(`Invalid control frame: payload length must be less than 126, but was ${frameData.payloadLength}`);
+                this._handleError(socket, `Invalid control frame: payload length must be less than 126, but was ${frameData.payloadLength}`);
             }
             if (frameData.FIN === 0) {
-                this.handleError(`Invalid control frame: control frames must not be fragmented`);
+                this._handleError(socket, `Invalid control frame: control frames must not be fragmented`);
             }
             if (frameData.OPCODE === constants_1.Opcode.CLOSE) {
-                this.handleClose(frameData.payload);
+                this._handleClose(socket, frameData.payload);
             }
             else if (frameData.OPCODE === constants_1.Opcode.PING) {
-                this.sendPong(socket, frameData);
+                this._sendPong(socket, frameData);
             }
             else if (frameData.OPCODE === constants_1.Opcode.PONG) {
                 this._handlePong();
@@ -55,31 +77,31 @@ class Socketter {
             //           OPCODE != 0     OPCODE = 0       OPCODE = 0           //
             /////////////////////////////////////////////////////////////////////
             if (this._isReservedOpcode(frameData.OPCODE)) {
-                this.handleError('A reserved OPCODE was used. Dropping the connection');
+                this._handleError(socket, 'A reserved OPCODE was used. Dropping the connection');
             }
             if (this._isControlFrame(frameData)) {
                 this._handleControlFrame(socket, frameData);
             }
             else if (frameData.FIN === 1) {
                 if (frameData.OPCODE === constants_1.Opcode.CONTINUATION && !accumulatedData.type) {
-                    return this.handleError('Invalid fragmentation termination attempt: there is no pending fragmantation');
+                    return this._handleError(socket, 'Invalid fragmentation termination attempt: there is no pending fragmantation');
                 }
                 if (frameData.OPCODE === constants_1.Opcode.CONTINUATION) {
                     const { type, payload } = accumulatedData;
                     const finalPayload = (0, helpers_1.decodePayload)(Buffer.concat([payload, frameData.payload]), type);
                     delete accumulatedData.type;
                     delete accumulatedData.payload;
-                    return this.handleData(finalPayload);
+                    return this._handleData(socket, finalPayload);
                 }
                 else {
                     const decodedPayload = (0, helpers_1.decodePayload)(frameData.payload, frameData.OPCODE);
-                    return this.handleData(decodedPayload);
+                    return this._handleData(socket, decodedPayload);
                 }
             }
             else if (frameData.FIN === 0) {
                 if (frameData.OPCODE === constants_1.Opcode.CONTINUATION) {
                     if (![constants_1.Opcode.TEXT, constants_1.Opcode.BINARY].includes(accumulatedData.type)) {
-                        this.handleError('Invalid flagmentation continuation attempt, there is no pending fragmantation');
+                        this._handleError(socket, 'Invalid flagmentation continuation attempt, there is no pending fragmantation');
                     }
                     else {
                         accumulatedData.payload = Buffer.concat([accumulatedData.payload, frameData.payload]);
@@ -87,7 +109,7 @@ class Socketter {
                 }
                 else {
                     const decodedPayload = (0, helpers_1.decodePayload)(frameData.payload, frameData.OPCODE);
-                    return this.handleData(decodedPayload);
+                    return this._handleData(socket, decodedPayload);
                 }
             }
         };
@@ -141,33 +163,6 @@ class Socketter {
                 payloadLength,
             };
         };
-        this._handleUpgrade = (req, socket) => {
-            console.log(req.headers);
-            const webSocketKey = req.headers['sec-websocket-key'];
-            const webSocketAccept = (0, helpers_1.getWebSocketAccept)(webSocketKey);
-            const headers = [
-                'HTTP/1.1 101 Switching Protocols',
-                'Upgrade: websocket',
-                'Connection: Upgrade',
-                `Sec-WebSocket-Accept: ${webSocketAccept}`,
-            ];
-            socket.write(headers.concat('\r\n').join('\r\n'));
-            socket.on('close', () => {
-                console.log('='.repeat(111));
-                console.log('='.repeat(111));
-                console.log('Connection closed');
-                console.log('='.repeat(111));
-                console.log('='.repeat(111));
-            });
-            // setTimeout(() => sendPing(socket, { payload: Buffer.from('hello') }), 2000);
-            socket.on('data', (chunk) => {
-                let accumulatedData = {};
-                const frameData = this._parseFrame(chunk);
-                this._handleFrame(socket, frameData, accumulatedData);
-                console.log(frameData);
-                // socket.end();
-            });
-        };
         this._sendData = (socket, options) => {
             const controlBytes = [
                 (options.FIN || 0x80) | // FIN
@@ -192,7 +187,7 @@ class Socketter {
                 extendedPayoadLengthBytes = Buffer.alloc(8);
                 extendedPayoadLengthBytes.writeBigUInt64BE(BigInt(payload.length));
             }
-            controlBytes.push((options.mask << 7) | payloadLength);
+            controlBytes.push((+options.mask << 7) | payloadLength);
             const payloadBuffer = Buffer.from(payload);
             let payLoadData = payloadBuffer;
             let maskKey = Buffer.alloc(0);
@@ -209,10 +204,41 @@ class Socketter {
             socket.write(data);
         };
         this._server = server;
-        // this._accumulatedData = {};
-        server.on('upgrade', this._handleUpgrade);
-        // this.handleData = (data) => { return true};
-        // this.handleError = (error) => {};
+        this.eventListeners = {
+            'open': [],
+            'close': [],
+            'data': [],
+            'ping': [],
+        };
+        server.on('upgrade', (req, socket) => {
+            console.log(req.headers);
+            const webSocketKey = req.headers['sec-websocket-key'];
+            const webSocketAccept = (0, helpers_1.getWebSocketAccept)(webSocketKey);
+            const headers = [
+                'HTTP/1.1 101 Switching Protocols',
+                'Upgrade: websocket',
+                'Connection: Upgrade',
+                `Sec-WebSocket-Accept: ${webSocketAccept}`,
+            ];
+            socket.write(headers.concat('\r\n').join('\r\n'));
+            socket.on('close', () => {
+                console.log('='.repeat(111));
+                console.log('='.repeat(111));
+                console.log('Connection closed');
+                console.log('='.repeat(111));
+                console.log('='.repeat(111));
+            });
+            // setTimeout(() => sendPing(socket, { payload: Buffer.from('hello') }), 2000);
+            socket.on('data', (chunk) => {
+                const accumulatedData = {};
+                const frameData = this._parseFrame(chunk);
+                this._handleFrame(socket, frameData, accumulatedData);
+                console.log(frameData);
+                // socket.end();
+                this.addEventListener('open', (socket) => {
+                });
+            });
+        });
     }
 }
 exports.Socketter = Socketter;
