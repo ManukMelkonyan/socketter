@@ -13,12 +13,12 @@ export const generateMaskKey = () => randomFillSync(Buffer.alloc(4), 0, 4);
 
 export const mask = (payload: Buffer, maskKey: Buffer) => unmask(payload, maskKey);
 
-export const decodePayload = (payload: Buffer, type = Opcode.TEXT) => {
+export const decodePayload = (payload: Buffer, type: Opcode) => {
   if (type === Opcode.TEXT) {
-    if (!isValidUTF8(payload)) throw new Error('Invalid UTF-8 payoad was provided');
-    return payload.toString('utf-8');
+    if (!isValidUTF8(payload)) return { error: 'Invalid UTF-8 payoad was provided', payload: null };
+    return { error: null, payload: payload.toString('utf-8') };
   };
-  return payload;
+  return { error: null, payload };
 }
 export const isValidUTF8 = (buf: Buffer) => {
   const len = buf.length;
@@ -80,12 +80,3 @@ export const toBin = (buf: Buffer) =>
     const bin = '0'.repeat(8 - parsed.length) + parsed;
     return acc + bin;
   }, '');
-
-// module.exports = {
-//   getWebSocketAccept,
-//   unmask,
-//   mask,
-//   generateMaskKey,
-//   decodePayload,
-//   isValidUTF8,
-// };

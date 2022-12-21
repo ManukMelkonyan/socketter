@@ -1,3 +1,3 @@
-import Socketter from "./Socketter";
+import socketter from './socketter';
 
-export { Socketter };
+export { socketter };

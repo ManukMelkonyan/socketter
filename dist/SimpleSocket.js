@@ -1,24 +1,40 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Socketter = void 0;
 const constants_1 = require("./constants");
 const helpers_1 = require("./helpers");
+// type StatusCode = 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 1011 | 1012 | 1013 | 1014 | 1015;
 class SimpleSocket {
-    constructor(_httpSocket) {
+    constructor(_httpSocket, options = {}) {
+        this._pingTimeout = null;
+        this.stopAutoPing = () => {
+            this._autoPing = false;
+        };
         this.addEventListener = (event, listener) => {
             this._eventListeners[event].push(listener);
         };
         this.removeEventListener = (event, listener) => {
-            const listenerIndex = this._eventListeners[event].findIndex((cb) => cb === listener);
+            const listenerIndex = this._eventListeners[event].findIndex(cb => cb === listener);
             if (listenerIndex === -1)
                 return false;
             this._eventListeners[event].splice(listenerIndex, 1);
             return true;
         };
+        this.sendPing = (data = Buffer.alloc(0)) => {
+            this._pingPayload = data;
+            this._sendData({
+                FIN: 0x80,
+                OPCODE: constants_1.Opcode.PING,
+                payload: Buffer.from(data),
+            });
+            this._pingTimeout = setTimeout(() => {
+                clearTimeout(this._pingTimeout);
+                this.close(1002); // protocol error, no pong to answer the latest ping within the give timeout
+            }, this._pingTimeoutMs);
+        };
         this.sendMessage = (data) => {
             const opcode = Buffer.isBuffer(data) ? constants_1.Opcode.BINARY : constants_1.Opcode.TEXT;
             this._sendData({
-                FIN: 1,
+                FIN: 0x80,
                 RSV1: 0,
                 RSV2: 0,
                 RSV3: 0,
@@ -26,13 +42,30 @@ class SimpleSocket {
                 payload: Buffer.from(data)
             });
         };
+        this.close = (statusCode = 1001) => {
+            clearTimeout(this._pingTimeout);
+            const payload = Buffer.alloc(2);
+            payload.writeUint16BE(statusCode, 0);
+            this._sendData({
+                FIN: 0x80,
+                RSV1: 0,
+                RSV2: 0,
+                RSV3: 0,
+                OPCODE: 0x8,
+                payload,
+            });
+            this._httpSocket.end();
+            this._eventListeners.close.forEach(cb => cb(statusCode));
+        };
         this._sendData = (options) => {
+            console.log(options);
+            console.log(Math.random());
             const controlBytes = [
-                (options.FIN || 0x80) | // FIN
-                    (options.RSV1 || 0x00) | // RSV1
-                    (options.RSV2 || 0x00) | // RSV2
-                    (options.RSV3 || 0x00) | // RSV3
-                    (options.OPCODE || 0x02), // OPCODE
+                (options.FIN || 0x80) |
+                    (options.RSV1 || 0x00) |
+                    (options.RSV2 || 0x00) |
+                    (options.RSV3 || 0x00) |
+                    (options.OPCODE || 0x02),
             ];
             const { payload } = options;
             let payloadLength = 0;
@@ -67,18 +100,33 @@ class SimpleSocket {
             this._httpSocket.write(data);
         };
         this._handleData = (data) => {
-            this._eventListeners.data.forEach(cb => {
-                cb(data);
-            });
+            this._eventListeners.data.forEach(cb => cb(data));
         };
-        this._handleClose = (data) => {
-            this._eventListeners.close.forEach(cb => {
-                cb(data);
-            });
+        this._handleClose = (frameData) => {
+            let statusCode = 1000;
+            if (frameData.payloadLength === 0) {
+                statusCode = 1000; // no status code was provided, normal closure
+            }
+            else if (frameData.payloadLength < 2) {
+                statusCode = 1002; // provided payload has length < 2, protocol error
+            }
+            else {
+                statusCode = frameData.payload.readInt16BE(0);
+            }
+            this.close(statusCode);
         };
-        this._handleError = (error) => {
-        };
-        this._handlePong = () => {
+        this._handlePong = (payload) => {
+            if (!this._pingPayload)
+                return;
+            if (Buffer.compare(payload, this._pingPayload) !== 0) {
+                return this.close(1002); // protocol error, because the pong's payload is not equal to the last ping's payload
+            }
+            clearTimeout(this._pingTimeout);
+            if (this._autoPing) {
+                this._pingTimeout = setTimeout(() => {
+                    this.sendPing(this._pingPayload);
+                }, this._pingInterval);
+            }
         };
         this._handleFrame = (frameData) => {
             /////////////////////////////////////////////////////////////////////
@@ -89,38 +137,44 @@ class SimpleSocket {
             //           OPCODE != 0     OPCODE = 0       OPCODE = 0           //
             /////////////////////////////////////////////////////////////////////
             if (this._isReservedOpcode(frameData.OPCODE)) {
-                this._handleError('A reserved OPCODE was used. Dropping the connection');
+                this.close(1002); // A reserved OPCODE was used. Dropping the connection
             }
             if (this._isControlFrame(frameData)) {
                 this._handleControlFrame(frameData);
             }
             else if (frameData.FIN === 1) {
                 if (frameData.OPCODE === constants_1.Opcode.CONTINUATION && !this._accumulatedData.type) {
-                    return this._handleError('Invalid fragmentation termination attempt: there is no pending fragmantation');
+                    return this.close(1002); // Invalid fragmentation termination attempt: there is no pending fragmantation
                 }
                 if (frameData.OPCODE === constants_1.Opcode.CONTINUATION) {
                     const { type, payload } = this._accumulatedData;
-                    const finalPayload = (0, helpers_1.decodePayload)(Buffer.concat([payload, frameData.payload]), type);
+                    const { error, payload: finalPayload } = (0, helpers_1.decodePayload)(Buffer.concat([payload, frameData.payload]), type);
+                    if (error)
+                        return this.close(1007);
                     delete this._accumulatedData.type;
                     delete this._accumulatedData.payload;
                     return this._handleData(finalPayload);
                 }
                 else {
-                    const decodedPayload = (0, helpers_1.decodePayload)(frameData.payload, frameData.OPCODE);
+                    const { error, payload: decodedPayload } = (0, helpers_1.decodePayload)(frameData.payload, frameData.OPCODE);
+                    if (error)
+                        return this.close(1007);
                     return this._handleData(decodedPayload);
                 }
             }
             else if (frameData.FIN === 0) {
                 if (frameData.OPCODE === constants_1.Opcode.CONTINUATION) {
                     if (![constants_1.Opcode.TEXT, constants_1.Opcode.BINARY].includes(this._accumulatedData.type)) {
-                        this._handleError('Invalid flagmentation continuation attempt, there is no pending fragmantation');
+                        this.close(1002); // Invalid flagmentation continuation attempt, there is no pending fragmantation
                     }
                     else {
                         this._accumulatedData.payload = Buffer.concat([this._accumulatedData.payload, frameData.payload]);
                     }
                 }
                 else {
-                    const decodedPayload = (0, helpers_1.decodePayload)(frameData.payload, frameData.OPCODE);
+                    const { error, payload: decodedPayload } = (0, helpers_1.decodePayload)(frameData.payload, frameData.OPCODE);
+                    if (error)
+                        return this.close(1007);
                     return this._handleData(decodedPayload);
                 }
             }
@@ -180,12 +234,6 @@ class SimpleSocket {
                 constants_1.Opcode.PONG,
             ].includes(frameData.OPCODE);
         };
-        this.sendPing = (socket, frameData) => {
-            this._sendData({
-                payload: frameData.payload,
-                OPCODE: constants_1.Opcode.PING,
-            });
-        };
         this._sendPong = (frameData) => {
             this._sendData({
                 payload: frameData.payload,
@@ -194,19 +242,19 @@ class SimpleSocket {
         };
         this._handleControlFrame = (frameData) => {
             if (frameData.payloadLength >= 126) {
-                this._handleError(`Invalid control frame: payload length must be less than 126, but was ${frameData.payloadLength}`);
+                this.close(1002); // Invalid control frame: payload length must be less than 126
             }
             if (frameData.FIN === 0) {
-                this._handleError(`Invalid control frame: control frames must not be fragmented`);
+                this.close(1002); // Invalid control frame: control frames must not be fragmented
             }
             if (frameData.OPCODE === constants_1.Opcode.CLOSE) {
-                this._handleClose(frameData.payload);
+                this._handleClose(frameData);
             }
             else if (frameData.OPCODE === constants_1.Opcode.PING) {
                 this._sendPong(frameData);
             }
             else if (frameData.OPCODE === constants_1.Opcode.PONG) {
-                this._handlePong();
+                this._handlePong(frameData.payload);
             }
         };
         this._httpSocket = _httpSocket;
@@ -216,41 +264,15 @@ class SimpleSocket {
             'ping': [],
         };
         this._accumulatedData = {};
+        this._autoPing = options.autoPing || false; // by default disabled
+        this._pingTimeoutMs = options.pingTimeout || 10000; // by default 10 seconds
+        this._pingInterval = options.pingInterval || 20000; // by default 20 seconds
+        this._pingPayload = options.pingPayload || Buffer.alloc(0); // by default empty payload
+        if (this._autoPing) {
+            this.sendPing(this._pingPayload);
+        }
     }
+    ;
 }
-class Socketter {
-    constructor(server, onConnect) {
-        this._server = server;
-        server.on('upgrade', (req, socket) => {
-            console.log(req.headers);
-            const webSocketKey = req.headers['sec-websocket-key'];
-            const webSocketAccept = (0, helpers_1.getWebSocketAccept)(webSocketKey);
-            const headers = [
-                'HTTP/1.1 101 Switching Protocols',
-                'Upgrade: websocket',
-                'Connection: Upgrade',
-                `Sec-WebSocket-Accept: ${webSocketAccept}`,
-            ];
-            socket.write(headers.concat('\r\n').join('\r\n')); // Opening handshake
-            const simpleSocket = new SimpleSocket(socket); // creating this instance for higher level of abstraction with easy-to-use API
-            onConnect(simpleSocket);
-            socket.on('close', () => {
-                console.log('='.repeat(111));
-                console.log('='.repeat(111));
-                console.log('Connection closed');
-                console.log('='.repeat(111));
-                console.log('='.repeat(111));
-            });
-            // setTimeout(() => sendPing(socket, { payload: Buffer.from('hello') }), 2000);
-            socket.on('data', (chunk) => {
-                const frameData = simpleSocket._parseFrame(chunk);
-                console.log(frameData);
-                simpleSocket._handleFrame(frameData);
-            });
-        });
-    }
-}
-exports.Socketter = Socketter;
 ;
-// module.exports = Socketter;
-exports.default = Socketter;
+exports.default = SimpleSocket;

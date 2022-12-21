@@ -8,7 +8,7 @@
     "/dist"
   ],
   "scripts": {
-    "test": "nodemon test.js"
+    "test": "tsc && node test.js"
   },
   "repository": {
     "type": "git",
