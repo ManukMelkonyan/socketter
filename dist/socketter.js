@@ -4,7 +4,6 @@ const helpers_1 = require("./helpers");
 const SimpleSocket_1 = require("./SimpleSocket");
 const socketter = (server, onConnect, options) => {
     server.on('upgrade', (req, socket) => {
-        console.log(req.headers);
         const webSocketKey = req.headers['sec-websocket-key'];
         if (!webSocketKey || !/^[+/0-9A-Za-z]{22}==$/.test(webSocketKey)) {
             const errorMessage = 'Missing key or invalid key';
@@ -33,7 +32,6 @@ const socketter = (server, onConnect, options) => {
         });
         socket.on('data', (chunk) => {
             const frameData = simpleSocket._parseFrame(chunk);
-            console.log(frameData);
             simpleSocket._handleFrame(frameData);
         });
     });

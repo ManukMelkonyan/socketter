@@ -222,7 +222,6 @@ class Socketter {
     constructor(server, onConnect) {
         this._server = server;
         server.on('upgrade', (req, socket) => {
-            console.log(req.headers);
             const webSocketKey = req.headers['sec-websocket-key'];
             const webSocketAccept = (0, helpers_1.getWebSocketAccept)(webSocketKey);
             const headers = [
@@ -244,7 +243,6 @@ class Socketter {
             // setTimeout(() => sendPing(socket, { payload: Buffer.from('hello') }), 2000);
             socket.on('data', (chunk) => {
                 const frameData = simpleSocket._parseFrame(chunk);
-                console.log(frameData);
                 simpleSocket._handleFrame(frameData);
             });
         });

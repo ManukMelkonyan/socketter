@@ -58,8 +58,6 @@ class SimpleSocket {
             this._eventListeners.close.forEach(cb => cb(statusCode));
         };
         this._sendData = (options) => {
-            console.log(options);
-            console.log(Math.random());
             const controlBytes = [
                 (options.FIN || 0x80) |
                     (options.RSV1 || 0x00) |

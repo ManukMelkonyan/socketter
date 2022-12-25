@@ -98,9 +98,6 @@ class SimpleSocket {
   };
 
   _sendData = (options: DataOptions) => {
-    console.log(options);
-    console.log(Math.random());
-    
     const controlBytes = [
       (options.FIN    || 0x80) |
       (options.RSV1   || 0x00) |

@@ -13,7 +13,6 @@ const socketter = (
   options: SocketterOptions,
 ) => {
     server.on('upgrade', (req: IncomingMessage, socket: Socket) => {
-      console.log(req.headers);
       const webSocketKey = req.headers['sec-websocket-key'];
       if (!webSocketKey || !/^[+/0-9A-Za-z]{22}==$/.test(webSocketKey)) {
         const errorMessage = 'Missing key or invalid key';
@@ -46,7 +45,6 @@ const socketter = (
 
       socket.on('data', (chunk: Buffer) => {
         const frameData = simpleSocket._parseFrame(chunk);
-        console.log(frameData);
         simpleSocket._handleFrame(frameData);
       });
     });
