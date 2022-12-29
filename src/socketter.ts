@@ -40,11 +40,12 @@ const socketter = (
       onConnect(simpleSocket);
 
       socket.on('close', (hadError) => {
-        simpleSocket.close(hadError ? 1006 : 1000);
+        simpleSocket.handleClose(hadError ? 1006 : 1000);
       });
 
       socket.on('data', (chunk: Buffer) => {
         const frameData = simpleSocket._parseFrame(chunk);
+        console.log(frameData);
         simpleSocket._handleFrame(frameData);
       });
     });
