@@ -28,10 +28,11 @@ const socketter = (server, onConnect, options) => {
         const simpleSocket = new SimpleSocket_1.default(socket, options); // creating this instance for higher level of abstraction with easy-to-use API
         onConnect(simpleSocket);
         socket.on('close', (hadError) => {
-            simpleSocket.close(hadError ? 1006 : 1000);
+            simpleSocket.handleClose(hadError ? 1006 : 1000);
         });
         socket.on('data', (chunk) => {
             const frameData = simpleSocket._parseFrame(chunk);
+            console.log(frameData);
             simpleSocket._handleFrame(frameData);
         });
     });

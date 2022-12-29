@@ -21,6 +21,7 @@ declare class SimpleSocket {
     close: (statusCode?: number) => void;
     _sendData: (options: DataOptions) => void;
     _handleData: (data?: Buffer | string) => void;
+    handleClose: (statusCode: number) => void;
     _handleClose: (frameData: FrameData) => void;
     _handlePong: (payload: Buffer) => void;
     _handleFrame: (frameData: FrameData) => void;

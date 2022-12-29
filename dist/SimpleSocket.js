@@ -55,7 +55,6 @@ class SimpleSocket {
                 payload,
             });
             this._httpSocket.end();
-            this._eventListeners.close.forEach(cb => cb(statusCode));
         };
         this._sendData = (options) => {
             const controlBytes = [
@@ -100,6 +99,9 @@ class SimpleSocket {
         this._handleData = (data) => {
             this._eventListeners.data.forEach(cb => cb(data));
         };
+        this.handleClose = (statusCode) => {
+            this._eventListeners.close.forEach(cb => cb(statusCode));
+        };
         this._handleClose = (frameData) => {
             let statusCode = 1000;
             if (frameData.payloadLength === 0) {
@@ -111,7 +113,7 @@ class SimpleSocket {
             else {
                 statusCode = frameData.payload.readInt16BE(0);
             }
-            this.close(statusCode);
+            this.handleClose(statusCode);
         };
         this._handlePong = (payload) => {
             if (!this._pingPayload)
