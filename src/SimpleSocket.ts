@@ -144,6 +144,7 @@ class SimpleSocket {
   };
 
   handleClose = (statusCode: number) => {
+    this.close(statusCode);
     this._eventListeners.close.forEach(cb => cb(statusCode));
   }
 

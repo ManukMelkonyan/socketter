@@ -1,6 +1,6 @@
 {
   "name": "socketter",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Custom Web Socket protocol implementation (RFC 6455)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

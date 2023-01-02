@@ -100,6 +100,7 @@ class SimpleSocket {
             this._eventListeners.data.forEach(cb => cb(data));
         };
         this.handleClose = (statusCode) => {
+            this.close(statusCode);
             this._eventListeners.close.forEach(cb => cb(statusCode));
         };
         this._handleClose = (frameData) => {
