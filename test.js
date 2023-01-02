@@ -8,8 +8,8 @@ console.log('running test....');
 socketter(server, (socket) => {
   // setTimeout(() => socket.sendPing(Buffer.alloc(2).fill('a')), 1000);
   socket.addEventListener('data', (data) => {
-    console.log(data);
-    // socket.close(1001);
+    // console.log(data);
+    socket.close(1001);
     // socket.sendMessage('This is an echo of your message: ' + data);
     
   })

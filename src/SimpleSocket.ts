@@ -85,15 +85,17 @@ class SimpleSocket {
     clearTimeout(this._pingTimeout);
     const payload = Buffer.alloc(2);
     payload.writeUint16BE(statusCode, 0)
-    this._sendData({
-      FIN: 0x80,
-      RSV1: 0,
-      RSV2: 0,
-      RSV3: 0,
-      OPCODE: 0x8,
-      payload,
-    });
-    this._httpSocket.end();
+    if (!['closed', 'readOnly'].includes(this._httpSocket.readyState)) {
+      this._sendData({
+        FIN: 0x80,
+        RSV1: 0,
+        RSV2: 0,
+        RSV3: 0,
+        OPCODE: 0x8,
+        payload,
+      });
+      this._httpSocket.end();
+    }
   };
 
   _sendData = (options: DataOptions) => {
