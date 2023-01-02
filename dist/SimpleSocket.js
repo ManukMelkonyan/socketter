@@ -69,12 +69,12 @@ class SimpleSocket {
             const { payload } = options;
             let payloadLength = 0;
             let extendedPayoadLengthBytes = Buffer.alloc(0);
-            if (payload.length <= 126) {
+            if (payload.length <= 125) {
                 payloadLength = payload.length;
             }
             else if (payload.length < 65536) {
                 payloadLength = 126;
-                extendedPayoadLengthBytes = Buffer.alloc(4);
+                extendedPayoadLengthBytes = Buffer.alloc(2);
                 extendedPayoadLengthBytes.writeUInt16BE(payload.length);
             }
             else {
@@ -96,6 +96,8 @@ class SimpleSocket {
                 maskKey,
                 payLoadData
             ]);
+            console.log('sending', data);
+            console.log('concat', Buffer.from(controlBytes), extendedPayoadLengthBytes, maskKey, payLoadData);
             this._httpSocket.write(data);
         };
         this._handleData = (data) => {
