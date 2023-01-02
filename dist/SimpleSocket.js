@@ -96,8 +96,6 @@ class SimpleSocket {
                 maskKey,
                 payLoadData
             ]);
-            console.log('sending', data);
-            console.log('concat', Buffer.from(controlBytes), extendedPayoadLengthBytes, maskKey, payLoadData);
             this._httpSocket.write(data);
         };
         this._handleData = (data) => {
